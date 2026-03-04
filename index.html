@@ -6,7 +6,6 @@
   <title>إيضاح — لوحة التحسينات</title>
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet" />
 
-  <!-- Firebase -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import {
@@ -14,9 +13,6 @@
       updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy
     } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-    // ============================================================
-    // 🔥 ضع هنا إعدادات Firebase الخاصة بمشروعك
-    // ============================================================
     const firebaseConfig = {
       apiKey: "AIzaSyCXwFuYYcrRe2XGRpIexLBdLxIbi3lalE8",
       authDomain: "eidaah-plan.firebaseapp.com",
@@ -25,37 +21,43 @@
       messagingSenderId: "809700282227",
       appId: "1:809700282227:web:15fb7401a12612d6083f06"
     };
-    // ============================================================
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const itemsRef = collection(db, "items");
 
-    // ── State ────────────────────────────────────────────────────
     let items = [];
     let editingId = null;
     let activeFilter = "all";
+    let activeTeam = "all";
+    let sortBy = "date";
 
-    // ── Meta ─────────────────────────────────────────────────────
     const TYPE_META = {
-      bug:         { label: "🐛 باق",        color: "#FF6B6B", bg: "#FF6B6B18" },
-      improvement: { label: "⚡ تحسين",      color: "#A78BFA", bg: "#A78BFA18" },
-      feature:     { label: "✨ ميزة جديدة", color: "#34D399", bg: "#34D39918" },
-      design:      { label: "🎨 تصميم",      color: "#60A5FA", bg: "#60A5FA18" },
+      bug:         { label: "🐛 باق",         color: "#FF6B6B", bg: "#FF6B6B18" },
+      improvement: { label: "⚡ تحسين",       color: "#A78BFA", bg: "#A78BFA18" },
+      feature:     { label: "✨ ميزة جديدة",  color: "#34D399", bg: "#34D39918" },
+      design:      { label: "🎨 تصميم",       color: "#60A5FA", bg: "#60A5FA18" },
     };
     const PRIORITY_META = {
-      high:   { label: "عاجل",   color: "#FF4D4D", bg: "#FF4D4D18" },
-      medium: { label: "متوسط",  color: "#FF9900", bg: "#FF990018" },
-      low:    { label: "منخفض", color: "#22C55E", bg: "#22C55E18" },
+      high:   { label: "عاجل",   color: "#FF4D4D", bg: "#FF4D4D18", order: 0 },
+      medium: { label: "متوسط",  color: "#FF9900", bg: "#FF990018", order: 1 },
+      low:    { label: "منخفض", color: "#22C55E", bg: "#22C55E18", order: 2 },
     };
     const STATUS_ORDER = ["pending", "inprogress", "done"];
     const STATUS_META = {
-      pending:    { label: "قيد الانتظار", color: "#94A3B8" },
-      inprogress: { label: "جارٍ العمل",  color: "#FBBF24" },
-      done:       { label: "مكتمل ✓",    color: "#34D399" },
+      pending:    { label: "قيد الانتظار", color: "#94A3B8", order: 0 },
+      inprogress: { label: "جارٍ العمل",  color: "#FBBF24", order: 1 },
+      done:       { label: "مكتمل ✓",    color: "#34D399", order: 2 },
+    };
+    const TEAM_META = {
+      "Frontend": { color: "#60A5FA", bg: "#60A5FA18", icon: "🖥️" },
+      "Backend":  { color: "#F472B6", bg: "#F472B618", icon: "⚙️" },
+      "AI/NLP":   { color: "#A78BFA", bg: "#A78BFA18", icon: "🤖" },
+      "UI/UX":    { color: "#34D399", bg: "#34D39918", icon: "🎨" },
+      "QA":       { color: "#FBBF24", bg: "#FBBF2418", icon: "🧪" },
+      "عام":      { color: "#94A3B8", bg: "#94A3B818", icon: "📌" },
     };
 
-    // ── Real-time listener ───────────────────────────────────────
     const q = query(itemsRef, orderBy("createdAt", "desc"));
     onSnapshot(q, (snapshot) => {
       items = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -63,15 +65,24 @@
       updateStats();
     });
 
-    // ── Render ───────────────────────────────────────────────────
+    function sortItems(arr) {
+      return [...arr].sort((a, b) => {
+        if (sortBy === "priority") return (PRIORITY_META[a.priority]?.order ?? 9) - (PRIORITY_META[b.priority]?.order ?? 9);
+        if (sortBy === "status")   return (STATUS_META[a.status]?.order ?? 9) - (STATUS_META[b.status]?.order ?? 9);
+        if (sortBy === "team")     return (a.teams||[]).join().localeCompare((b.teams||[]).join());
+        return 0;
+      });
+    }
+
     function renderAll() {
       const list = document.getElementById("itemsList");
-      const filtered = activeFilter === "all"
-        ? items
-        : items.filter(i => i.type === activeFilter || i.status === activeFilter);
+      let filtered = items;
+      if (activeFilter !== "all") filtered = filtered.filter(i => i.type === activeFilter || i.status === activeFilter);
+      if (activeTeam !== "all")   filtered = filtered.filter(i => (i.teams||[]).includes(activeTeam));
+      filtered = sortItems(filtered);
 
-      if (filtered.length === 0) {
-        list.innerHTML = `<div class="empty"><div style="font-size:40px">📋</div><div style="margin-top:8px;color:#334155">لا توجد بنود</div></div>`;
+      if (!filtered.length) {
+        list.innerHTML = `<div class="empty"><div style="font-size:40px">📋</div><div style="margin-top:8px">لا توجد بنود</div></div>`;
         return;
       }
 
@@ -80,428 +91,351 @@
         const pm = PRIORITY_META[item.priority] || PRIORITY_META.medium;
         const sm = STATUS_META[item.status] || STATUS_META.pending;
         const isDone = item.status === "done";
-        return `
-          <div class="card ${isDone ? 'done' : ''}" style="border-right:3px solid ${tm.color}">
-            <button class="status-btn" onclick="cycleStatus('${item.id}','${item.status}')"
-              style="border-color:${sm.color};background:${isDone ? sm.color : 'transparent'};color:${isDone ? '#fff' : sm.color}">
-              ${isDone ? "✓" : ""}
-            </button>
-            <div class="card-body">
-              <div class="tags">
-                <span class="tag" style="background:${tm.bg};color:${tm.color}">${tm.label}</span>
-                <span class="tag" style="background:${pm.bg};color:${pm.color}">${pm.label}</span>
-                <span class="status-label" style="color:${sm.color}">${sm.label}</span>
-              </div>
-              <div class="card-title ${isDone ? 'strikethrough' : ''}">${escHtml(item.title)}</div>
-              ${item.desc ? `<div class="card-desc">${escHtml(item.desc)}</div>` : ""}
-              ${item.assignee ? `<div class="card-assignee">👤 ${escHtml(item.assignee)}</div>` : ""}
+        const teams = item.teams || [];
+        const assignees = item.assignees || (item.assignee ? [item.assignee] : []);
+
+        const teamTags = teams.map(t => {
+          const m = TEAM_META[t] || TEAM_META["عام"];
+          return `<span class="tag" style="background:${m.bg};color:${m.color}">${m.icon} ${t}</span>`;
+        }).join("");
+
+        const assigneeChips = assignees.filter(Boolean).map(a =>
+          `<span class="assignee-chip">👤 ${escHtml(a)}</span>`
+        ).join("");
+
+        return `<div class="card ${isDone?'done':''}" style="border-right:3px solid ${tm.color}">
+          <button class="status-btn" onclick="cycleStatus('${item.id}','${item.status}')"
+            style="border-color:${sm.color};background:${isDone?sm.color:'transparent'};color:${isDone?'#fff':sm.color}">
+            ${isDone?"✓":""}
+          </button>
+          <div class="card-body">
+            <div class="tags">
+              <span class="tag" style="background:${tm.bg};color:${tm.color}">${tm.label}</span>
+              <span class="tag" style="background:${pm.bg};color:${pm.color}">${pm.label}</span>
+              ${teamTags}
+              <span class="status-label" style="color:${sm.color}">${sm.label}</span>
             </div>
-            <div class="card-actions">
-              <button class="action-btn edit-btn" onclick="openEdit('${item.id}')">✏️</button>
-              <button class="action-btn del-btn" onclick="deleteItem('${item.id}')">🗑</button>
-            </div>
-          </div>`;
+            <div class="card-title ${isDone?'strikethrough':''}">${escHtml(item.title)}</div>
+            ${item.desc ? `<div class="card-desc">${escHtml(item.desc)}</div>` : ""}
+            ${assigneeChips ? `<div class="assignees-row">${assigneeChips}</div>` : ""}
+          </div>
+          <div class="card-actions">
+            <button class="action-btn" onclick="openEdit('${item.id}')">✏️</button>
+            <button class="action-btn" onclick="deleteItem('${item.id}')">🗑</button>
+          </div>
+        </div>`;
       }).join("");
     }
 
     function updateStats() {
-      const total = items.length;
-      const done  = items.filter(i => i.status === "done").length;
-      const high  = items.filter(i => i.priority === "high" && i.status !== "done").length;
+      const total = items.length, done = items.filter(i=>i.status==="done").length;
+      const high = items.filter(i=>i.priority==="high"&&i.status!=="done").length;
       document.getElementById("statTotal").textContent = total;
       document.getElementById("statDone").textContent  = done;
       document.getElementById("statHigh").textContent  = high;
-      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      const pct = total > 0 ? Math.round((done/total)*100) : 0;
       document.getElementById("progressBar").style.width = pct + "%";
-      document.getElementById("progressPct").textContent = pct + "٪ مكتمل";
+      document.getElementById("progressPct").textContent = pct + "٪";
     }
 
-    // ── Actions ──────────────────────────────────────────────────
     window.cycleStatus = async (id, current) => {
-      const next = STATUS_ORDER[(STATUS_ORDER.indexOf(current) + 1) % STATUS_ORDER.length];
-      await updateDoc(doc(db, "items", id), { status: next });
+      const next = STATUS_ORDER[(STATUS_ORDER.indexOf(current)+1) % STATUS_ORDER.length];
+      await updateDoc(doc(db,"items",id), { status: next });
+    };
+    window.deleteItem = async (id) => {
+      await deleteDoc(doc(db,"items",id));
+      showToast("تم الحذف","#FF6B6B");
     };
 
-    window.deleteItem = async (id) => {
-      await deleteDoc(doc(db, "items", id));
-      showToast("تم الحذف", "#FF6B6B");
-    };
+    function resetModal() {
+      document.getElementById("fTitle").value = "";
+      document.getElementById("fDesc").value  = "";
+      document.getElementById("fType").value  = "improvement";
+      document.getElementById("fPriority").value = "medium";
+      document.querySelectorAll(".team-chip,.member-chip").forEach(c=>c.classList.remove("selected"));
+    }
 
     window.openAdd = () => {
       editingId = null;
       document.getElementById("modalTitle").textContent = "➕ إضافة ملاحظة أو ميزة";
-      document.getElementById("fTitle").value = "";
-      document.getElementById("fDesc").value = "";
-      document.getElementById("fAssignee").value = "";
-      document.getElementById("fType").value = "improvement";
-      document.getElementById("fPriority").value = "medium";
+      resetModal();
       document.getElementById("modal").classList.add("open");
     };
 
     window.openEdit = (id) => {
-      const item = items.find(i => i.id === id);
-      if (!item) return;
+      const item = items.find(i=>i.id===id); if(!item) return;
       editingId = id;
       document.getElementById("modalTitle").textContent = "✏️ تعديل البند";
-      document.getElementById("fTitle").value     = item.title || "";
-      document.getElementById("fDesc").value      = item.desc || "";
-      document.getElementById("fAssignee").value  = item.assignee || "";
-      document.getElementById("fType").value      = item.type || "improvement";
-      document.getElementById("fPriority").value  = item.priority || "medium";
+      resetModal();
+      document.getElementById("fTitle").value    = item.title||"";
+      document.getElementById("fDesc").value     = item.desc||"";
+      document.getElementById("fType").value     = item.type||"improvement";
+      document.getElementById("fPriority").value = item.priority||"medium";
+      const teams     = item.teams||[];
+      const assignees = item.assignees||(item.assignee?[item.assignee]:[]);
+      document.querySelectorAll(".team-chip").forEach(c=>c.classList.toggle("selected", teams.includes(c.dataset.val)));
+      document.querySelectorAll(".member-chip").forEach(c=>c.classList.toggle("selected", assignees.includes(c.dataset.val)));
       document.getElementById("modal").classList.add("open");
     };
 
-    window.closeModal = () => {
-      document.getElementById("modal").classList.remove("open");
-      editingId = null;
-    };
+    window.closeModal = () => { document.getElementById("modal").classList.remove("open"); editingId=null; };
 
     window.saveForm = async () => {
       const title = document.getElementById("fTitle").value.trim();
       if (!title) { document.getElementById("fTitle").focus(); return; }
-      const payload = {
-        title,
-        desc:     document.getElementById("fDesc").value.trim(),
-        assignee: document.getElementById("fAssignee").value.trim(),
-        type:     document.getElementById("fType").value,
-        priority: document.getElementById("fPriority").value,
-      };
+      const teams     = [...document.querySelectorAll(".team-chip.selected")].map(c=>c.dataset.val);
+      const assignees = [...document.querySelectorAll(".member-chip.selected")].map(c=>c.dataset.val);
+      const payload = { title, desc: document.getElementById("fDesc").value.trim(), type: document.getElementById("fType").value, priority: document.getElementById("fPriority").value, teams, assignees };
       if (editingId) {
-        await updateDoc(doc(db, "items", editingId), payload);
+        await updateDoc(doc(db,"items",editingId), payload);
         showToast("تم التعديل ✓");
       } else {
-        await addDoc(itemsRef, { ...payload, status: "pending", createdAt: serverTimestamp() });
+        await addDoc(itemsRef, {...payload, status:"pending", createdAt:serverTimestamp()});
         showToast("تمت الإضافة ✓");
       }
       closeModal();
     };
 
-    window.setFilter = (val) => {
-      activeFilter = val;
-      document.querySelectorAll(".filter-btn").forEach(b => b.classList.toggle("active", b.dataset.val === val));
-      renderAll();
-    };
+    window.setFilter = (val) => { activeFilter=val; document.querySelectorAll(".filter-btn").forEach(b=>b.classList.toggle("active",b.dataset.val===val)); renderAll(); };
+    window.setTeam   = (val) => { activeTeam=val;   document.querySelectorAll(".team-filter-btn").forEach(b=>b.classList.toggle("active",b.dataset.val===val)); renderAll(); };
+    window.setSort   = (val) => { sortBy=val; renderAll(); };
+    window.toggleChip = (el) => el.classList.toggle("selected");
 
-    // ── Helpers ───────────────────────────────────────────────────
-    function escHtml(s) {
-      return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    function escHtml(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+    function showToast(msg, color="#34D399") {
+      const t=document.getElementById("toast"); t.textContent=msg; t.style.background=color; t.style.boxShadow=`0 8px 30px ${color}60`; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),2500);
     }
-
-    function showToast(msg, color = "#34D399") {
-      const t = document.getElementById("toast");
-      t.textContent = msg;
-      t.style.background = color;
-      t.style.boxShadow = `0 8px 30px ${color}60`;
-      t.classList.add("show");
-      setTimeout(() => t.classList.remove("show"), 2500);
-    }
-
-    // Enter to save
-    document.addEventListener("keydown", e => {
-      if (e.key === "Escape") closeModal();
-    });
+    document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeModal(); });
   </script>
 
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#080C17;--surface:#0D1525;--card:#0F1A2E;--border:#162035;--text:#CBD5E1;--muted:#475569;--font:'Tajawal',system-ui,sans-serif}
+    body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;padding-bottom:80px}
 
-    :root {
-      --bg: #080C17;
-      --surface: #0D1525;
-      --card: #0F1A2E;
-      --border: #162035;
-      --accent: #3B82F6;
-      --accent2: #60A5FA;
-      --text: #CBD5E1;
-      --muted: #475569;
-      --font: 'Tajawal', system-ui, sans-serif;
-    }
+    .header{background:linear-gradient(180deg,#0D1525 0%,#080C17 100%);border-bottom:1px solid var(--border);padding:24px 24px 18px;position:sticky;top:0;z-index:40}
+    .header-inner{max-width:900px;margin:0 auto;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px}
+    .brand-label{font-size:10px;color:var(--muted);letter-spacing:3px;text-transform:uppercase;margin-bottom:4px}
+    .brand-title{font-size:22px;font-weight:900;background:linear-gradient(90deg,#60A5FA,#38BDF8);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .live-row{display:flex;align-items:center;gap:6px;margin-top:4px}
+    .live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#34D399;box-shadow:0 0 8px #34D399;animation:pulse 2s infinite}
+    .live-label{font-size:11px;color:#34D399}
+    .add-btn{background:linear-gradient(135deg,#3B82F6,#0EA5E9);border:none;border-radius:10px;padding:11px 20px;color:#fff;font-weight:800;font-size:14px;cursor:pointer;font-family:var(--font);box-shadow:0 4px 20px #3B82F640;transition:transform .15s}
+    .add-btn:hover{transform:translateY(-2px)}
 
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--font);
-      min-height: 100vh;
-      padding-bottom: 80px;
-    }
+    .stats-row{max-width:900px;margin:12px auto 0;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .stat-chip{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 14px;display:flex;align-items:center;gap:8px}
+    .stat-num{font-size:20px;font-weight:900}
+    .stat-lbl{font-size:11px;color:var(--muted)}
+    .progress-chip{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 14px;display:flex;align-items:center;gap:10px;min-width:150px}
+    .progress-track{flex:1;background:var(--border);border-radius:99px;height:5px;overflow:hidden}
+    .progress-fill{height:100%;background:linear-gradient(90deg,#3B82F6,#34D399);border-radius:99px;transition:width .5s;width:0%}
+    .progress-pct{font-size:11px;color:var(--muted);white-space:nowrap}
 
-    /* ── Header ── */
-    .header {
-      background: linear-gradient(180deg, #0D1525 0%, #080C17 100%);
-      border-bottom: 1px solid var(--border);
-      padding: 28px 24px 20px;
-      position: sticky; top: 0; z-index: 40;
-    }
-    .header-inner {
-      max-width: 860px; margin: 0 auto;
-      display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;
-    }
-    .brand-label { font-size: 10px; color: var(--muted); letter-spacing: 3px; text-transform: uppercase; margin-bottom: 4px; }
-    .brand-title {
-      font-size: 24px; font-weight: 900;
-      background: linear-gradient(90deg, #60A5FA, #38BDF8);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    }
-    .live-dot {
-      display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-      background: #34D399; box-shadow: 0 0 8px #34D399; animation: pulse 2s infinite;
-      margin-left: 6px;
-    }
-    .live-label { font-size: 11px; color: #34D399; }
+    .main{max-width:900px;margin:22px auto 0;padding:0 16px}
+    .section-label{font-size:10px;color:var(--muted);font-weight:800;letter-spacing:2px;text-transform:uppercase;margin-bottom:7px}
+    .filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+    .filter-btn,.team-filter-btn{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:5px 13px;color:var(--muted);font-weight:700;font-size:12px;cursor:pointer;font-family:var(--font);transition:all .2s}
+    .filter-btn.active,.team-filter-btn.active,.filter-btn:hover,.team-filter-btn:hover{background:linear-gradient(135deg,#3B82F6,#0EA5E9);border-color:transparent;color:#fff}
+    .sort-select{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 14px;color:var(--text);font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;outline:none;width:100%;max-width:280px;transition:border-color .2s}
+    .sort-select:focus{border-color:#3B82F6}
+    .divider{height:1px;background:var(--border);margin:16px 0}
 
-    .add-btn {
-      background: linear-gradient(135deg, #3B82F6, #0EA5E9);
-      border: none; border-radius: 10px; padding: 11px 22px;
-      color: #fff; font-weight: 800; font-size: 14px; cursor: pointer;
-      font-family: var(--font); box-shadow: 0 4px 20px #3B82F640;
-      transition: transform .15s, box-shadow .15s;
-    }
-    .add-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 28px #3B82F660; }
+    .cards{display:flex;flex-direction:column;gap:10px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:15px 16px;display:flex;align-items:flex-start;gap:13px;animation:slideIn .25s ease;transition:opacity .2s}
+    .card:hover{border-color:#1E3A5F}
+    .card.done{opacity:.55}
+    .empty{text-align:center;padding:64px;color:var(--muted)}
 
-    /* ── Stats ── */
-    .stats-row {
-      max-width: 860px; margin: 14px auto 0;
-      display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
-    }
-    .stat-chip {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 8px; padding: 7px 16px;
-      display: flex; align-items: center; gap: 8px;
-    }
-    .stat-num { font-size: 20px; font-weight: 900; }
-    .stat-lbl { font-size: 11px; color: var(--muted); }
-    .progress-chip {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 8px; padding: 7px 16px;
-      display: flex; align-items: center; gap: 10px; min-width: 160px;
-    }
-    .progress-track { flex: 1; background: var(--border); border-radius: 99px; height: 5px; overflow: hidden; }
-    .progress-fill { height: 100%; background: linear-gradient(90deg,#3B82F6,#34D399); border-radius: 99px; transition: width .5s; width: 0%; }
-    .progress-pct { font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .status-btn{width:26px;height:26px;border-radius:50%;border:2px solid;background:transparent;cursor:pointer;flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;transition:all .2s}
+    .status-btn:hover{transform:scale(1.15)}
 
-    /* ── Main ── */
-    .main { max-width: 860px; margin: 26px auto 0; padding: 0 16px; }
+    .card-body{flex:1;min-width:0}
+    .tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px;align-items:center}
+    .tag{border-radius:5px;padding:2px 9px;font-size:11px;font-weight:800}
+    .status-label{font-size:11px;margin-right:auto}
+    .card-title{font-weight:700;font-size:15px;color:#E2E8F0;line-height:1.4}
+    .card-title.strikethrough{text-decoration:line-through;color:var(--muted)}
+    .card-desc{font-size:13px;color:var(--muted);line-height:1.6;margin-top:4px}
+    .assignees-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+    .assignee-chip{font-size:11px;color:#475569;background:#0D1525;border:1px solid var(--border);border-radius:20px;padding:2px 10px}
 
-    /* ── Filters ── */
-    .filters { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 22px; }
-    .filter-btn {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 7px; padding: 6px 14px;
-      color: var(--muted); font-weight: 700; font-size: 12px;
-      cursor: pointer; font-family: var(--font); transition: all .2s;
-    }
-    .filter-btn.active, .filter-btn:hover {
-      background: linear-gradient(135deg,#3B82F6,#0EA5E9);
-      border-color: transparent; color: #fff;
-    }
+    .card-actions{display:flex;gap:5px;flex-shrink:0}
+    .action-btn{background:var(--surface);border:none;border-radius:7px;padding:6px 9px;cursor:pointer;font-size:13px;transition:background .2s}
+    .action-btn:hover{background:#1E3A5F}
 
-    /* ── Cards ── */
-    .cards { display: flex; flex-direction: column; gap: 10px; }
-    .card {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 12px; padding: 16px 18px;
-      display: flex; align-items: flex-start; gap: 14px;
-      transition: opacity .2s, transform .2s;
-      animation: slideIn .25s ease;
-    }
-    .card:hover { border-color: #1E3A5F; }
-    .card.done { opacity: .55; }
-    .empty { text-align: center; padding: 64px; color: var(--muted); }
+    .modal-overlay{position:fixed;inset:0;background:#00000090;display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;opacity:0;pointer-events:none;transition:opacity .2s}
+    .modal-overlay.open{opacity:1;pointer-events:all}
+    .modal{background:#0D1525;border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;transform:translateY(20px);transition:transform .25s}
+    .modal-overlay.open .modal{transform:translateY(0)}
+    .modal h2{font-size:17px;font-weight:800;color:#60A5FA;margin-bottom:18px}
 
-    .status-btn {
-      width: 26px; height: 26px; border-radius: 50%; border: 2px solid;
-      background: transparent; cursor: pointer; flex-shrink: 0; margin-top: 2px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 800; transition: all .2s;
-    }
-    .status-btn:hover { transform: scale(1.15); }
+    .field{margin-bottom:14px}
+    .field label{display:block;font-size:12px;color:var(--muted);font-weight:700;margin-bottom:5px}
+    .field input,.field textarea,.field select{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:#E2E8F0;font-size:13px;font-family:var(--font);outline:none;transition:border-color .2s}
+    .field input:focus,.field textarea:focus,.field select:focus{border-color:#3B82F6}
+    .field textarea{resize:vertical}
+    .field-row{display:flex;gap:12px}
+    .field-row .field{flex:1}
 
-    .card-body { flex: 1; min-width: 0; }
-    .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; align-items: center; }
-    .tag { border-radius: 5px; padding: 2px 9px; font-size: 11px; font-weight: 800; }
-    .status-label { font-size: 11px; margin-right: auto; }
+    .chips-grid{display:flex;flex-wrap:wrap;gap:7px}
+    .team-chip{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:5px 12px;font-size:12px;font-weight:800;cursor:pointer;font-family:var(--font);color:var(--muted);transition:all .2s;user-select:none}
+    .team-chip.selected{background:linear-gradient(135deg,#3B82F6,#0EA5E9);border-color:transparent;color:#fff}
+    .member-chip{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);color:var(--muted);transition:all .2s;user-select:none}
+    .member-chip.selected{background:#1E3A5F;border-color:#3B82F6;color:#60A5FA}
 
-    .card-title { font-weight: 700; font-size: 15px; color: #E2E8F0; line-height: 1.4; }
-    .card-title.strikethrough { text-decoration: line-through; color: var(--muted); }
-    .card-desc { font-size: 13px; color: var(--muted); line-height: 1.6; margin-top: 4px; }
-    .card-assignee { font-size: 11px; color: #334155; margin-top: 7px; }
+    .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+    .btn-cancel{background:var(--surface);border:none;border-radius:8px;padding:10px 18px;color:var(--muted);font-weight:700;cursor:pointer;font-family:var(--font)}
+    .btn-save{background:linear-gradient(135deg,#3B82F6,#0EA5E9);border:none;border-radius:8px;padding:10px 24px;color:#fff;font-weight:800;cursor:pointer;font-family:var(--font)}
 
-    .card-actions { display: flex; gap: 5px; flex-shrink: 0; }
-    .action-btn {
-      background: var(--surface); border: none; border-radius: 7px;
-      padding: 6px 9px; cursor: pointer; font-size: 13px; transition: background .2s;
-    }
-    .action-btn:hover { background: #1E3A5F; }
+    #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(60px);color:#fff;border-radius:10px;padding:10px 24px;font-weight:800;font-size:14px;z-index:200;transition:transform .3s;pointer-events:none}
+    #toast.show{transform:translateX(-50%) translateY(0)}
 
-    /* ── Modal ── */
-    .modal-overlay {
-      position: fixed; inset: 0; background: #00000090;
-      display: flex; align-items: center; justify-content: center;
-      z-index: 100; padding: 20px; opacity: 0; pointer-events: none; transition: opacity .2s;
-    }
-    .modal-overlay.open { opacity: 1; pointer-events: all; }
-    .modal {
-      background: #0D1525; border: 1px solid var(--border);
-      border-radius: 16px; padding: 28px; width: 100%; max-width: 480px;
-      transform: translateY(20px); transition: transform .25s;
-    }
-    .modal-overlay.open .modal { transform: translateY(0); }
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+    @keyframes slideIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 
-    .modal h2 { font-size: 17px; font-weight: 800; color: #60A5FA; margin-bottom: 20px; }
-    .field { margin-bottom: 15px; }
-    .field label { display: block; font-size: 12px; color: var(--muted); font-weight: 700; margin-bottom: 5px; }
-    .field input, .field textarea, .field select {
-      width: 100%; background: var(--bg); border: 1px solid var(--border);
-      border-radius: 8px; padding: 10px 12px; color: #E2E8F0; font-size: 13px;
-      font-family: var(--font); outline: none; transition: border-color .2s;
-    }
-    .field input:focus, .field textarea:focus, .field select:focus { border-color: #3B82F6; }
-    .field textarea { resize: vertical; }
-    .field-row { display: flex; gap: 12px; }
-    .field-row .field { flex: 1; }
-
-    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
-    .btn-cancel {
-      background: var(--surface); border: none; border-radius: 8px;
-      padding: 10px 18px; color: var(--muted); font-weight: 700; cursor: pointer; font-family: var(--font);
-    }
-    .btn-save {
-      background: linear-gradient(135deg,#3B82F6,#0EA5E9); border: none; border-radius: 8px;
-      padding: 10px 24px; color: #fff; font-weight: 800; cursor: pointer; font-family: var(--font);
-      box-shadow: 0 4px 16px #3B82F640;
-    }
-    .btn-save:hover { opacity: .9; }
-
-    /* ── Toast ── */
-    #toast {
-      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(60px);
-      color: #fff; border-radius: 10px; padding: 10px 24px;
-      font-weight: 800; font-size: 14px; z-index: 200; transition: transform .3s;
-      pointer-events: none;
-    }
-    #toast.show { transform: translateX(-50%) translateY(0); }
-
-    /* ── Setup banner ── */
-    #setupBanner {
-      background: linear-gradient(135deg,#1a0a00,#2d1500);
-      border: 1px solid #FF9900; border-radius: 12px;
-      padding: 18px 22px; margin-bottom: 22px;
-      display: flex; align-items: flex-start; gap: 12px;
-    }
-    #setupBanner.hidden { display: none; }
-    .banner-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
-    .banner-text { font-size: 13px; line-height: 1.7; color: #FCD34D; }
-    .banner-text strong { color: #FF9900; font-size: 14px; }
-    .banner-text code { background: #00000040; padding: 1px 6px; border-radius: 4px; font-size: 12px; direction: ltr; display: inline-block; }
-
-    /* ── Animations ── */
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-    @keyframes slideIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-
-    /* ── Mobile ── */
-    @media(max-width:600px) {
-      .header { padding: 18px 14px 14px; }
-      .main { padding: 0 10px; }
-      .card { padding: 13px 12px; gap: 10px; }
-      .card-title { font-size: 14px; }
-      .brand-title { font-size: 20px; }
-      .add-btn { padding: 9px 16px; font-size: 13px; }
+    @media(max-width:600px){
+      .header{padding:16px 12px 12px}
+      .main{padding:0 10px}
+      .card{padding:12px 10px;gap:9px}
+      .brand-title{font-size:18px}
     }
   </style>
 </head>
 <body>
 
-  <!-- Header -->
-  <header class="header">
-    <div class="header-inner">
-      <div>
-        <div class="brand-label">خطة التطوير</div>
-        <div class="brand-title">Eidaah — لوحة التحسينات</div>
-        <div style="display:flex;align-items:center;gap:6px;margin-top:5px">
-          <span class="live-dot"></span>
-          <span class="live-label">مباشر — يتزامن مع الفريق</span>
-        </div>
-      </div>
-      <button class="add-btn" onclick="openAdd()">+ إضافة ملاحظة</button>
-    </div>
-
-    <div class="stats-row">
-      <div class="stat-chip"><span class="stat-num" id="statTotal" style="color:#60A5FA">0</span><span class="stat-lbl">إجمالي البنود</span></div>
-      <div class="stat-chip"><span class="stat-num" id="statDone" style="color:#34D399">0</span><span class="stat-lbl">مكتملة</span></div>
-      <div class="stat-chip"><span class="stat-num" id="statHigh" style="color:#FF6B6B">0</span><span class="stat-lbl">عاجلة متبقية</span></div>
-      <div class="progress-chip">
-        <div class="progress-track"><div class="progress-fill" id="progressBar"></div></div>
-        <span class="progress-pct" id="progressPct">0٪ مكتمل</span>
+<header class="header">
+  <div class="header-inner">
+    <div>
+      <div class="brand-label">خطة التطوير</div>
+      <div class="brand-title">Eidaah — لوحة التحسينات</div>
+      <div class="live-row">
+        <span class="live-dot"></span>
+        <span class="live-label">مباشر — يتزامن مع الفريق</span>
       </div>
     </div>
-  </header>
-
-  <!-- Main -->
-  <main class="main">
-
-    <!-- Filters -->
-    <div class="filters">
-      <button class="filter-btn active" data-val="all" onclick="setFilter('all')">الكل</button>
-      <button class="filter-btn" data-val="bug" onclick="setFilter('bug')">🐛 أخطاء</button>
-      <button class="filter-btn" data-val="improvement" onclick="setFilter('improvement')">⚡ تحسينات</button>
-      <button class="filter-btn" data-val="feature" onclick="setFilter('feature')">✨ مزايا جديدة</button>
-      <button class="filter-btn" data-val="design" onclick="setFilter('design')">🎨 تصميم</button>
-      <button class="filter-btn" data-val="inprogress" onclick="setFilter('inprogress')">جارٍ</button>
-      <button class="filter-btn" data-val="done" onclick="setFilter('done')">مكتمل</button>
-    </div>
-
-    <!-- Cards -->
-    <div class="cards" id="itemsList">
-      <div class="empty"><div style="font-size:40px">⏳</div><div style="margin-top:8px">جارٍ التحميل...</div></div>
-    </div>
-  </main>
-
-  <!-- Modal -->
-  <div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
-    <div class="modal">
-      <h2 id="modalTitle">➕ إضافة ملاحظة أو ميزة</h2>
-
-      <div class="field">
-        <label>العنوان *</label>
-        <input id="fTitle" type="text" placeholder="مثال: تحسين أداء صفحة النتائج" onkeydown="if(event.key==='Enter')saveForm()" />
-      </div>
-      <div class="field">
-        <label>التفاصيل</label>
-        <textarea id="fDesc" rows="3" placeholder="وصف مختصر للمشكلة أو الميزة..."></textarea>
-      </div>
-      <div class="field">
-        <label>المسؤول (اختياري)</label>
-        <input id="fAssignee" type="text" placeholder="اسم الشخص المسؤول" />
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>النوع</label>
-          <select id="fType">
-            <option value="bug">🐛 باق</option>
-            <option value="improvement" selected>⚡ تحسين</option>
-            <option value="feature">✨ ميزة جديدة</option>
-            <option value="design">🎨 تصميم</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>الأولوية</label>
-          <select id="fPriority">
-            <option value="high">🔴 عاجل</option>
-            <option value="medium" selected>🟡 متوسط</option>
-            <option value="low">🟢 منخفض</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="modal-actions">
-        <button class="btn-cancel" onclick="closeModal()">إلغاء</button>
-        <button class="btn-save" onclick="saveForm()">حفظ</button>
-      </div>
+    <button class="add-btn" onclick="openAdd()">+ إضافة ملاحظة</button>
+  </div>
+  <div class="stats-row">
+    <div class="stat-chip"><span class="stat-num" id="statTotal" style="color:#60A5FA">0</span><span class="stat-lbl">إجمالي</span></div>
+    <div class="stat-chip"><span class="stat-num" id="statDone"  style="color:#34D399">0</span><span class="stat-lbl">مكتملة</span></div>
+    <div class="stat-chip"><span class="stat-num" id="statHigh"  style="color:#FF6B6B">0</span><span class="stat-lbl">عاجلة</span></div>
+    <div class="progress-chip">
+      <div class="progress-track"><div class="progress-fill" id="progressBar"></div></div>
+      <span class="progress-pct" id="progressPct">0٪</span>
     </div>
   </div>
+</header>
 
-  <!-- Toast -->
-  <div id="toast"></div>
+<main class="main">
 
+  <div class="section-label">النوع</div>
+  <div class="filter-row">
+    <button class="filter-btn active" data-val="all"         onclick="setFilter('all')">الكل</button>
+    <button class="filter-btn"        data-val="bug"         onclick="setFilter('bug')">🐛 أخطاء</button>
+    <button class="filter-btn"        data-val="improvement" onclick="setFilter('improvement')">⚡ تحسينات</button>
+    <button class="filter-btn"        data-val="feature"     onclick="setFilter('feature')">✨ مزايا</button>
+    <button class="filter-btn"        data-val="design"      onclick="setFilter('design')">🎨 تصميم</button>
+    <button class="filter-btn"        data-val="inprogress"  onclick="setFilter('inprogress')">جارٍ</button>
+    <button class="filter-btn"        data-val="done"        onclick="setFilter('done')">مكتمل</button>
+  </div>
+
+  <div class="section-label" style="margin-top:14px">الفريق</div>
+  <div class="filter-row">
+    <button class="team-filter-btn active" data-val="all"      onclick="setTeam('all')">الكل</button>
+    <button class="team-filter-btn"        data-val="Frontend" onclick="setTeam('Frontend')">🖥️ Frontend</button>
+    <button class="team-filter-btn"        data-val="Backend"  onclick="setTeam('Backend')">⚙️ Backend</button>
+    <button class="team-filter-btn"        data-val="AI/NLP"   onclick="setTeam('AI/NLP')">🤖 AI/NLP</button>
+    <button class="team-filter-btn"        data-val="UI/UX"    onclick="setTeam('UI/UX')">🎨 UI/UX</button>
+    <button class="team-filter-btn"        data-val="QA"       onclick="setTeam('QA')">🧪 QA</button>
+    <button class="team-filter-btn"        data-val="عام"      onclick="setTeam('عام')">📌 عام</button>
+  </div>
+
+  <div class="section-label" style="margin-top:14px">ترتيب حسب</div>
+  <div style="margin-bottom:20px">
+    <select class="sort-select" onchange="setSort(this.value)">
+      <option value="date">📅 تاريخ الإضافة</option>
+      <option value="priority">🔴 الأولوية (عاجل أولاً)</option>
+      <option value="status">🔄 الحالة</option>
+      <option value="team">👥 الفريق</option>
+    </select>
+  </div>
+
+  <div class="divider"></div>
+  <div class="cards" id="itemsList">
+    <div class="empty"><div style="font-size:40px">⏳</div><div style="margin-top:8px">جارٍ التحميل...</div></div>
+  </div>
+</main>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h2 id="modalTitle">➕ إضافة ملاحظة أو ميزة</h2>
+
+    <div class="field">
+      <label>العنوان *</label>
+      <input id="fTitle" type="text" placeholder="مثال: تحسين أداء صفحة النتائج" onkeydown="if(event.key==='Enter')saveForm()" />
+    </div>
+    <div class="field">
+      <label>التفاصيل</label>
+      <textarea id="fDesc" rows="3" placeholder="وصف مختصر..."></textarea>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>النوع</label>
+        <select id="fType">
+          <option value="bug">🐛 باق</option>
+          <option value="improvement" selected>⚡ تحسين</option>
+          <option value="feature">✨ ميزة جديدة</option>
+          <option value="design">🎨 تصميم</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>الأولوية</label>
+        <select id="fPriority">
+          <option value="high">🔴 عاجل</option>
+          <option value="medium" selected>🟡 متوسط</option>
+          <option value="low">🟢 منخفض</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>الفريق المسؤول (اختر واحد أو أكثر)</label>
+      <div class="chips-grid">
+        <span class="team-chip" data-val="Frontend" onclick="toggleChip(this)">🖥️ Frontend</span>
+        <span class="team-chip" data-val="Backend"  onclick="toggleChip(this)">⚙️ Backend</span>
+        <span class="team-chip" data-val="AI/NLP"   onclick="toggleChip(this)">🤖 AI/NLP</span>
+        <span class="team-chip" data-val="UI/UX"    onclick="toggleChip(this)">🎨 UI/UX</span>
+        <span class="team-chip" data-val="QA"       onclick="toggleChip(this)">🧪 QA</span>
+        <span class="team-chip" data-val="عام"      onclick="toggleChip(this)">📌 عام</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>الأعضاء المسؤولون (اختر واحد أو أكثر)</label>
+      <div class="chips-grid">
+        <span class="member-chip" data-val="ريان الحربي"        onclick="toggleChip(this)">ريان الحربي</span>
+        <span class="member-chip" data-val="ناهد المطيري"       onclick="toggleChip(this)">ناهد المطيري</span>
+        <span class="member-chip" data-val="ليان القباني"       onclick="toggleChip(this)">ليان القباني</span>
+        <span class="member-chip" data-val="عبدالعزيز الضيف"    onclick="toggleChip(this)">عبدالعزيز الضيف</span>
+        <span class="member-chip" data-val="رسيل الصمعاني"      onclick="toggleChip(this)">رسيل الصمعاني</span>
+        <span class="member-chip" data-val="عبدالعزيز القحطاني" onclick="toggleChip(this)">عبدالعزيز القحطاني</span>
+        <span class="member-chip" data-val="سلطان الراجح"       onclick="toggleChip(this)">سلطان الراجح</span>
+        <span class="member-chip" data-val="زياد المنيف"        onclick="toggleChip(this)">زياد المنيف</span>
+        <span class="member-chip" data-val="ياسر الشريف"        onclick="toggleChip(this)">ياسر الشريف</span>
+        <span class="member-chip" data-val="فيصل التويجري"      onclick="toggleChip(this)">فيصل التويجري</span>
+        <span class="member-chip" data-val="تركي الدعجاني"      onclick="toggleChip(this)">تركي الدعجاني</span>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">إلغاء</button>
+      <button class="btn-save"   onclick="saveForm()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
 </body>
 </html>

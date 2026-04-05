@@ -1,6 +1,6 @@
 # Hi there, I'm Abdulaziz 👋
 
-**Information Systems Specialist | Enterprise Architecture | Full-Stack Developer**
+**Information Systems Student | Enterprise Architecture | Full-Stack Developer**
 
 I am an Information Systems professional based in Riyadh, passionate about bridging the gap between technical execution and business strategy. My expertise lies in designing scalable system architectures, customizing ERPs, and developing complete software solutions that align with core organizational goals.
 

@@ -40,5 +40,5 @@ I don't just write code; I look at the big picture. By combining my background i
 ---
 
 ### 📫 Let's Connect!
-* **LinkedIn:** [My LinkedIn](https://www.linkedin.com/in/abdulaziz-aldhaif-a09786218/)
-* **Email:** [My Email](mailto:abdulaziz.aldhif@gmail.com)
+* **Connect with me on ** [LinkedIn](https://www.linkedin.com/in/abdulaziz-aldhaif-a09786218/)
+* **Reach out via ** [Email](mailto:abdulaziz.aldhif@gmail.com)
